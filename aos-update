@@ -1,5 +1,15 @@
 #!/bin/bash
 
+# =============================================
+# Script : aos-update
+# Description : Mise à jour complète du système ArchimedeOS (paquets officiels + AUR)
+# Auteur : Killian Prin-abeil <killian@archimedeos.org>
+# Date : $(date +%Y-%m-%d)
+# =============================================
+
+set -euo pipefail
+
+# Définition des couleurs pour une meilleure lisibilité
 RED="\e[31m"
 GREEN="\e[32m"
 YELLOW="\e[33m"
@@ -7,20 +17,46 @@ CYAN="\e[36m"
 BOLD="\e[1m"
 RESET="\e[0m"
 
-clear
-echo -e "${CYAN}${BOLD}🔄 ArchimedeOS - Mise à jour système${RESET}\n"
+print_header() {
+    echo -e "${CYAN}${BOLD}ArchimedeOS - Système de mise à jour${RESET}\n"
+}
 
-echo -e "${YELLOW}➡ Mise à jour des paquets officiels (pacman)...${RESET}"
-sudo pacman -Syu
+update_pacman() {
+    echo -e "${YELLOW}[*] Mise à jour des dépôts officiels...${RESET}"
+    if ! sudo pacman -Syu; then
+        echo -e "${RED}[!] Erreur : Échec de la mise à jour des dépôts officiels${RESET}"
+        exit 1
+    fi
+}
 
-if command -v yay &>/dev/null; then
-    echo -e "\n${YELLOW}➡ Mise à jour des paquets AUR (yay)...${RESET}"
-    yay -Syu --noconfirm
-elif command -v paru &>/dev/null; then
-    echo -e "\n${YELLOW}➡ Mise à jour des paquets AUR (paru)...${RESET}"
-    paru -Syu --noconfirm
-else
-    echo -e "\n${RED}❌ Aucun helper AUR trouvé (yay ou paru manquant).${RESET}"
-fi
+update_aur() {
+    local aur_helper=""
+    if command -v yay &>/dev/null; then
+        aur_helper="yay"
+    elif command -v paru &>/dev/null; then
+        aur_helper="paru"
+    fi
 
-echo -e "\n${GREEN}${BOLD}✅ Système ArchimedeOS à jour !${RESET}"
+    if [[ -n "$aur_helper" ]]; then
+        echo -e "\n${YELLOW}[*] Mise à jour des dépôts AUR (${aur_helper})...${RESET}"
+        if ! $aur_helper -Syu --noconfirm; then
+            echo -e "${RED}[!] Erreur : Échec de la mise à jour des dépôts AUR${RESET}"
+            exit 1
+        fi
+    else
+        echo -e "\n${RED}[!] Attention : Aucun gestionnaire AUR (yay/paru) n'est installé${RESET}"
+    fi
+}
+
+print_success() {
+    echo -e "\n${GREEN}[+] Mise à jour du système ArchimedeOS terminée avec succès${RESET}"
+}
+
+main() {
+    print_header
+    update_pacman
+    update_aur
+    print_success
+}
+
+main "$@"
