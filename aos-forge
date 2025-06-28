@@ -1,0 +1,8 @@
+#!/bin/bash
+
+# =============================================
+# Script : aos-forge
+# Description : Ajouter/Maintenir vos container archimedeos
+# Auteur : Killian Prin-abeil <killian@archimedeos.org>
+# Date : $(date +%Y-%m-%d)
+# =============================================
