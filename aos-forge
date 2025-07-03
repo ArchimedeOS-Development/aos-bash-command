@@ -2,7 +2,152 @@
 
 # =============================================
 # Script : aos-forge
-# Description : Ajouter/Maintenir vos container archimedeos
+# Description : Gestion des conteneurs Docker pour ArchimedeOS
 # Auteur : Killian Prin-abeil <killian@archimedeos.org>
-# Date : $(date +%Y-%m-%d)
 # =============================================
+
+set -euo pipefail
+
+usage() {
+  echo "Usage : $0 <action> <container> [commande]"
+  echo "Actions : deploy | start | stop | rm | logs | exec | status | help"
+  echo "Containers : base | redteam | blueteam"
+  echo "Exemples :"
+  echo "  $0 deploy base"
+  echo "  $0 exec redteam bash"
+  echo "  $0 logs blueteam"
+  exit 1
+}
+
+get_image() {
+  case "$1" in
+    base) echo "ghcr.io/archimedeos-development/archimedeos-base:latest" ;;
+    redteam) echo "ghcr.io/archimedeos-development/archimedeos-redteam:latest" ;;
+    blueteam) echo "ghcr.io/archimedeos-development/archimedeos-blueteam:latest" ;;
+    *) echo "Nom de conteneur inconnu : $1" >&2 ; exit 2 ;;
+  esac
+}
+
+container_exists() {
+  docker ps -a --format '{{.Names}}' | grep -wq "$1"
+}
+
+container_running() {
+  docker ps --format '{{.Names}}' | grep -wq "$1"
+}
+
+deploy() {
+  local name="$1"
+  shift
+  local image
+  image=$(get_image "$name")
+  if container_exists "$name"; then
+    echo "Le conteneur $name existe déjà. Utilisez start/stop/rm."
+    exit 3
+  fi
+  echo "Déploiement du conteneur $name depuis l'image $image..."
+  if [ $# -gt 0 ]; then
+    docker run -d --name "$name" "$image" "$@"
+  else
+    docker run -d --name "$name" "$image"
+  fi
+  if [ $? -eq 0 ]; then
+    echo "Conteneur $name déployé avec succès."
+  else
+    echo "Erreur lors du déploiement du conteneur $name." >&2
+    exit 11
+  fi
+}
+
+start() {
+  local name="$1"
+  if ! container_exists "$name"; then
+    echo "Le conteneur $name n'existe pas. Utilisez deploy."
+    exit 4
+  fi
+  if container_running "$name"; then
+    echo "Le conteneur $name est déjà démarré."
+    return
+  fi
+  docker start "$name"
+}
+
+stop() {
+  local name="$1"
+  if ! container_exists "$name"; then
+    echo "Le conteneur $name n'existe pas."
+    exit 5
+  fi
+  if ! container_running "$name"; then
+    echo "Le conteneur $name est déjà arrêté."
+    return
+  fi
+  docker stop "$name"
+}
+
+remove() {
+  local name="$1"
+  if ! container_exists "$name"; then
+    echo "Le conteneur $name n'existe pas."
+    exit 6
+  fi
+  if docker rm -f "$name"; then
+    echo "Conteneur $name supprimé avec succès."
+  else
+    echo "Erreur lors de la suppression du conteneur $name." >&2
+    exit 10
+  fi
+}
+
+logs() {
+  local name="$1"
+  if ! container_exists "$name"; then
+    echo "Le conteneur $name n'existe pas."
+    exit 7
+  fi
+  docker logs -f "$name"
+}
+
+exec_cmd() {
+  local name="$1"
+  shift
+  if ! container_exists "$name"; then
+    echo "Le conteneur $name n'existe pas."
+    exit 8
+  fi
+  if [ -z "${1:-}" ]; then
+    echo "Veuillez spécifier la commande à exécuter."
+    exit 9
+  fi
+  docker exec -it "$name" "$@"
+}
+
+status() {
+  for c in base redteam blueteam; do
+    if container_exists "$c"; then
+      state=$(docker inspect -f '{{.State.Status}}' "$c")
+      echo "$c : $state"
+    else
+      echo "$c : non déployé"
+    fi
+  done
+}
+
+# Main
+[ $# -lt 1 ] && usage
+ACTION="$1"; shift
+case "$ACTION" in
+  deploy)
+    [ $# -ge 1 ] || usage
+    name="$1"; shift
+    deploy "$name" "$@"
+    ;;
+  start)    [ $# -eq 1 ] && start "$1" || usage ;;
+  stop)     [ $# -eq 1 ] && stop "$1" || usage ;;
+  rm)       [ $# -eq 1 ] && remove "$1" || usage ;;
+  logs)     [ $# -eq 1 ] && logs "$1" || usage ;;
+  exec)     [ $# -ge 2 ] && exec_cmd "$1" "${@:2}" || usage ;;
+  status)   status ;;
+  help|-h|--help) usage ;;
+  *) usage ;;
+esac
