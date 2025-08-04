@@ -1,11 +1,13 @@
 #!/bin/bash
-set -euo pipefail
 
 # =============================================
 # Script : arch-shell
 # Description : Gestion des environnements Arch Linux pour ArchimedeOS
 # Auteur : Killian Prin-abeil <killian@archimedeos.org>
+# Date : $(date +%Y-%m-%d)
 # =============================================
+
+set -euo pipefail
 
 ARCHSHELL_DIR="${HOME}/.arch-shells"
 
