@@ -1,0 +1,75 @@
+#!/bin/bash
+
+# =============================================
+# Script : arch-shell
+# Description : Gestion des environnements Arch Linux pour ArchimedeOS
+# Auteur : Killian Prin-abeil <killian@archimedeos.org>
+# Date : $(date +%Y-%m-%d)
+# =============================================
+
+set -euo pipefail
+
+ARCHSHELL_DIR="${HOME}/.arch-shells"
+
+usage() {
+    echo "Usage: $0 create <env> | -S <env> <pkg...> | enter <env> | delete <env>"
+    exit 1
+}
+
+if [ $# -lt 2 ]; then
+    usage
+fi
+
+case "$1" in
+  create)
+    ENVNAME="$2"
+    mkdir -p "$ARCHSHELL_DIR"
+    echo "Création de l'environnement $ENVNAME..."
+    if sudo mkarchroot "${ARCHSHELL_DIR}/${ENVNAME}" base > /dev/null 2>&1; then
+      echo "Environnement $ENVNAME créé."
+    else
+      echo "Erreur lors de la création du chroot."; exit 2;
+    fi
+    ;;
+  -S)
+    ENVNAME="$2"
+    shift 2
+    if [ ! -d "${ARCHSHELL_DIR}/${ENVNAME}" ]; then
+      echo "Environnement inexistant : ${ENVNAME}"; exit 3;
+    fi
+    echo "Installation de(s) paquet(s) $* dans $ENVNAME..."
+    if sudo arch-nspawn "${ARCHSHELL_DIR}/${ENVNAME}" pacman -S --noconfirm "$@" > /dev/null 2>&1; then
+      echo "Installation terminée."
+    else
+      echo "Erreur lors de l'installation des paquets."; exit 4;
+    fi
+    ;;
+  enter)
+    ENVNAME="$2"
+    if [ ! -d "${ARCHSHELL_DIR}/${ENVNAME}" ]; then
+      echo "Environnement inexistant : ${ENVNAME}"; exit 3;
+    fi
+    echo "Entrée dans l'environnement $ENVNAME."
+    sudo arch-nspawn "${ARCHSHELL_DIR}/${ENVNAME}"
+    ;;
+  delete)
+    ENVNAME="$2"
+    if [ ! -d "${ARCHSHELL_DIR}/${ENVNAME}" ]; then
+      echo "Environnement inexistant : ${ENVNAME}"; exit 3;
+    fi
+    read -p "Supprimer définitivement ${ENVNAME} ? [o/N] " REP
+    if [[ "$REP" =~ ^[oOyY]$ ]]; then
+      sudo rm -rf "${ARCHSHELL_DIR}/${ENVNAME}"
+      LOCKFILE="${ARCHSHELL_DIR}/${ENVNAME}.lock"
+      if [ -f "$LOCKFILE" ]; then
+        sudo rm -f "$LOCKFILE"
+      fi
+      echo "Environnement supprimé."
+    else
+      echo "Annulé."
+    fi
+    ;;
+  *)
+    usage
+    ;;
+esac
