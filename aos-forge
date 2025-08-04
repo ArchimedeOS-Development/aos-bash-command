@@ -4,6 +4,7 @@
 # Script : aos-forge
 # Description : Gestion des conteneurs Docker pour ArchimedeOS
 # Auteur : Killian Prin-abeil <killian@archimedeos.org>
+# Date : $(date +%Y-%m-%d)
 # =============================================
 
 set -euo pipefail
