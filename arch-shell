@@ -123,7 +123,7 @@ case "$1" in
     if sudo arch-nspawn -c /var/cache/pacman/pkg "${ARCHSHELL_DIR}/${ENVNAME}" pacman -S --noconfirm "$@" > /dev/null 2>&1; then
       echo "Installation terminée."
       update_last_used "$ENVNAME"
-            for pkg in "$@"; do
+      for pkg in "$@"; do
         add_package "$ENVNAME" "$pkg"
       done
     else
