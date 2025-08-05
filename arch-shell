@@ -38,7 +38,8 @@ case "$1" in
       echo "Environnement inexistant : ${ENVNAME}"; exit 3;
     fi
     echo "Installation de(s) paquet(s) $* dans $ENVNAME..."
-    if sudo arch-nspawn "${ARCHSHELL_DIR}/${ENVNAME}" pacman -S --noconfirm "$@" > /dev/null 2>&1; then
+    # Partage du cache pacman du système hôte avec le chroot
+    if sudo arch-nspawn -b /var/cache/pacman/pkg "${ARCHSHELL_DIR}/${ENVNAME}" pacman -S --noconfirm "$@" > /dev/null 2>&1; then
       echo "Installation terminée."
     else
       echo "Erreur lors de l'installation des paquets."; exit 4;
@@ -50,7 +51,8 @@ case "$1" in
       echo "Environnement inexistant : ${ENVNAME}"; exit 3;
     fi
     echo "Entrée dans l'environnement $ENVNAME."
-    sudo arch-nspawn "${ARCHSHELL_DIR}/${ENVNAME}"
+    # Partage du cache pacman du système hôte avec le chroot
+    sudo arch-nspawn -b /var/cache/pacman/pkg "${ARCHSHELL_DIR}/${ENVNAME}"
     ;;
   delete)
     ENVNAME="$2"
