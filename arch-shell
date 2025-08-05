@@ -9,50 +9,97 @@
 
 set -euo pipefail
 
-ARCHSHELL_DIR="${HOME}/.arch-shells"
+ARCHSHELL_DIR="${HOME}/.arch-shell"
+ARCHSHELL_STORE="${ARCHSHELL_DIR}/store"
+BASE_TEMPLATE="${ARCHSHELL_STORE}/base-template"
 
 usage() {
-    echo "Usage: $0 create <env> | -S <env> <pkg...> | enter <env> | delete <env>"
+    echo "Usage: $0 init | regen-base | create <env> | -S <env> <pkg...> | enter <env> | delete <env>"
     exit 1
 }
 
-if [ $# -lt 2 ]; then
+if [ $# -lt 1 ]; then
     usage
 fi
 
 case "$1" in
-  create)
-    ENVNAME="$2"
-    mkdir -p "$ARCHSHELL_DIR"
-    echo "Création de l'environnement $ENVNAME..."
-    if sudo mkarchroot "${ARCHSHELL_DIR}/${ENVNAME}" base > /dev/null 2>&1; then
-      echo "Environnement $ENVNAME créé."
+  init)
+    mkdir -p "$ARCHSHELL_STORE"
+    if [ -d "$BASE_TEMPLATE" ]; then
+      echo "Template de base existe déjà. Utilisez 'regen-base' pour le régénérer."
     else
-      echo "Erreur lors de la création du chroot."; exit 2;
+      echo "Initialisation du template de base..."
+      if sudo mkarchroot "$BASE_TEMPLATE" base > /dev/null 2>&1; then
+        echo "Template de base créé."
+      else
+        echo "Erreur lors de la création du template de base."; exit 2;
+      fi
     fi
     ;;
+  regen-base)
+    mkdir -p "$ARCHSHELL_STORE"
+    echo "Régénération du template de base..."
+    if [ -d "$BASE_TEMPLATE" ]; then
+      sudo rm -rf "$BASE_TEMPLATE"
+    fi
+    if sudo mkarchroot "$BASE_TEMPLATE" base > /dev/null 2>&1; then
+      echo "Template de base régénéré."
+    else
+      echo "Erreur lors de la régénération du template de base."; exit 6;
+    fi
+    ;;
+  create)
+    if [ $# -lt 2 ]; then
+      echo "Usage: $0 create <env>"
+      exit 1
+    fi
+    ENVNAME="$2"
+    if [ ! -d "$BASE_TEMPLATE" ]; then
+      echo "Template de base introuvable. Exécutez d'abord '$0 init'."
+      exit 2
+    fi
+    if [ -d "${ARCHSHELL_DIR}/${ENVNAME}" ]; then
+      echo "L'environnement ${ENVNAME} existe déjà."; exit 5;
+    fi
+    echo "Création de l'environnement $ENVNAME à partir du template..."
+    sudo cp -a "$BASE_TEMPLATE" "${ARCHSHELL_DIR}/${ENVNAME}"
+    sudo chown -R $USER: "${ARCHSHELL_DIR}/${ENVNAME}"
+    echo "Environnement $ENVNAME créé."
+    ;;
   -S)
+    if [ $# -lt 3 ]; then
+      echo "Usage: $0 -S <env> <pkg...>"
+      exit 1
+    fi
     ENVNAME="$2"
     shift 2
     if [ ! -d "${ARCHSHELL_DIR}/${ENVNAME}" ]; then
       echo "Environnement inexistant : ${ENVNAME}"; exit 3;
     fi
     echo "Installation de(s) paquet(s) $* dans $ENVNAME..."
-    if sudo arch-nspawn "${ARCHSHELL_DIR}/${ENVNAME}" pacman -S --noconfirm "$@" > /dev/null 2>&1; then
+    if sudo arch-nspawn -c /var/cache/pacman/pkg "${ARCHSHELL_DIR}/${ENVNAME}" pacman -S --noconfirm "$@"; then
       echo "Installation terminée."
     else
       echo "Erreur lors de l'installation des paquets."; exit 4;
     fi
     ;;
   enter)
+    if [ $# -lt 2 ]; then
+      echo "Usage: $0 enter <env>"
+      exit 1
+    fi
     ENVNAME="$2"
     if [ ! -d "${ARCHSHELL_DIR}/${ENVNAME}" ]; then
       echo "Environnement inexistant : ${ENVNAME}"; exit 3;
     fi
     echo "Entrée dans l'environnement $ENVNAME."
-    sudo arch-nspawn "${ARCHSHELL_DIR}/${ENVNAME}"
+    sudo arch-nspawn -c /var/cache/pacman/pkg "${ARCHSHELL_DIR}/${ENVNAME}"
     ;;
   delete)
+    if [ $# -lt 2 ]; then
+      echo "Usage: $0 delete <env>"
+      exit 1
+    fi
     ENVNAME="$2"
     if [ ! -d "${ARCHSHELL_DIR}/${ENVNAME}" ]; then
       echo "Environnement inexistant : ${ENVNAME}"; exit 3;
