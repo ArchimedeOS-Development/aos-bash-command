@@ -14,8 +14,56 @@ ARCHSHELL_STORE="${ARCHSHELL_DIR}/store"
 BASE_TEMPLATE="${ARCHSHELL_STORE}/base-template"
 
 usage() {
-    echo "Usage: $0 init | regen-base | create <env> | -S <env> <pkg...> | enter <env> | delete <env>"
+    echo "Usage: $0 init | regen-base | create <env> | -S <env> <pkg...> | enter <env> | delete <env> | list | info <env>"
     exit 1
+}
+
+# Fonction pour créer/mettre à jour le fichier d'info d'un environnement
+update_env_info() {
+    local envname="$1"
+    local envdir="${ARCHSHELL_DIR}/${envname}"
+    local infofile="${envdir}/.arch-shell-env"
+    
+    # Créer ou mettre à jour le fichier d'info
+    cat > "$infofile" << EOF
+{
+  "name": "$envname",
+  "created": "$(date -Iseconds)",
+  "last_used": "$(date -Iseconds)",
+  "packages": [],
+  "arch": "$(uname -m)"
+}
+EOF
+}
+
+# Fonction pour mettre à jour last_used
+update_last_used() {
+    local envname="$1"
+    local infofile="${ARCHSHELL_DIR}/${envname}/.arch-shell-env"
+    if [ -f "$infofile" ]; then
+        # Mettre à jour last_used avec jq si disponible, sinon avec sed
+        if command -v jq >/dev/null 2>&1; then
+            jq ".last_used = \"$(date -Iseconds)\"" "$infofile" > "${infofile}.tmp" && mv "${infofile}.tmp" "$infofile"
+        else
+            sed -i "s/\"last_used\": \"[^\"]*\"/\"last_used\": \"$(date -Iseconds)\"/" "$infofile"
+        fi
+    fi
+}
+
+# Fonction pour ajouter un package à la liste
+add_package() {
+    local envname="$1"
+    local package="$2"
+    local infofile="${ARCHSHELL_DIR}/${envname}/.arch-shell-env"
+    
+    if [ -f "$infofile" ]; then
+        if command -v jq >/dev/null 2>&1; then
+            jq ".packages += [\"$package\"]" "$infofile" > "${infofile}.tmp" && mv "${infofile}.tmp" "$infofile"
+        else
+            # Fallback simple avec sed (ajoute le package à la fin de la liste)
+            sed -i "s/\"packages\": \[\([^]]*\)\]/\"packages\": [\1, \"$package\"]/" "$infofile"
+        fi
+    fi
 }
 
 if [ $# -lt 1 ]; then
@@ -64,6 +112,7 @@ case "$1" in
     echo "Création de l'environnement $ENVNAME à partir du template..."
     sudo cp -a "$BASE_TEMPLATE" "${ARCHSHELL_DIR}/${ENVNAME}"
     sudo chown -R $USER: "${ARCHSHELL_DIR}/${ENVNAME}"
+    update_env_info "$ENVNAME"
     echo "Environnement $ENVNAME créé."
     ;;
   -S)
@@ -77,8 +126,13 @@ case "$1" in
       echo "Environnement inexistant : ${ENVNAME}"; exit 3;
     fi
     echo "Installation de(s) paquet(s) $* dans $ENVNAME..."
-    if sudo arch-nspawn -c /var/cache/pacman/pkg "${ARCHSHELL_DIR}/${ENVNAME}" pacman -S --noconfirm "$@"; then
+    if sudo arch-nspawn -c /var/cache/pacman/pkg "${ARCHSHELL_DIR}/${ENVNAME}" pacman -S --noconfirm "$@" > /dev/null 2>&1; then
       echo "Installation terminée."
+      update_last_used "$ENVNAME"
+      # Ajouter chaque package à la liste
+      for pkg in "$@"; do
+        add_package "$ENVNAME" "$pkg"
+      done
     else
       echo "Erreur lors de l'installation des paquets."; exit 4;
     fi
@@ -93,6 +147,7 @@ case "$1" in
       echo "Environnement inexistant : ${ENVNAME}"; exit 3;
     fi
     echo "Entrée dans l'environnement $ENVNAME."
+    update_last_used "$ENVNAME"
     sudo arch-nspawn -c /var/cache/pacman/pkg "${ARCHSHELL_DIR}/${ENVNAME}"
     ;;
   delete)
@@ -114,6 +169,33 @@ case "$1" in
       echo "Environnement supprimé."
     else
       echo "Annulé."
+    fi
+    ;;
+  list)
+    echo "Environnements disponibles :"
+    for env in "$ARCHSHELL_DIR"/*; do
+      [ -d "$env" ] || continue
+      [ "$(basename "$env")" = "store" ] && continue
+      if [ -f "$env/.arch-shell-env" ]; then
+        echo "- $(basename "$env")"
+      fi
+    done
+    ;;
+  info)
+    if [ $# -lt 2 ]; then
+      echo "Usage: $0 info <env>"
+      exit 1
+    fi
+    ENVNAME="$2"
+    INFOFILE="${ARCHSHELL_DIR}/${ENVNAME}/.arch-shell-env"
+    if [ ! -f "$INFOFILE" ]; then
+      echo "Environnement inexistant : ${ENVNAME}"; exit 3;
+    fi
+    echo "Informations sur l'environnement $ENVNAME :"
+    if command -v jq >/dev/null 2>&1; then
+      jq '.' "$INFOFILE"
+    else
+      cat "$INFOFILE"
     fi
     ;;
   *)
