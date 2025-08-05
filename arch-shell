@@ -18,13 +18,11 @@ usage() {
     exit 1
 }
 
-# Fonction pour créer/mettre à jour le fichier d'info d'un environnement
 update_env_info() {
     local envname="$1"
     local envdir="${ARCHSHELL_DIR}/${envname}"
     local infofile="${envdir}/.arch-shell-env"
     
-    # Créer ou mettre à jour le fichier d'info
     cat > "$infofile" << EOF
 {
   "name": "$envname",
@@ -36,12 +34,10 @@ update_env_info() {
 EOF
 }
 
-# Fonction pour mettre à jour last_used
 update_last_used() {
     local envname="$1"
     local infofile="${ARCHSHELL_DIR}/${envname}/.arch-shell-env"
     if [ -f "$infofile" ]; then
-        # Mettre à jour last_used avec jq si disponible, sinon avec sed
         if command -v jq >/dev/null 2>&1; then
             jq ".last_used = \"$(date -Iseconds)\"" "$infofile" > "${infofile}.tmp" && mv "${infofile}.tmp" "$infofile"
         else
@@ -50,7 +46,6 @@ update_last_used() {
     fi
 }
 
-# Fonction pour ajouter un package à la liste
 add_package() {
     local envname="$1"
     local package="$2"
@@ -60,7 +55,6 @@ add_package() {
         if command -v jq >/dev/null 2>&1; then
             jq ".packages += [\"$package\"]" "$infofile" > "${infofile}.tmp" && mv "${infofile}.tmp" "$infofile"
         else
-            # Fallback simple avec sed (ajoute le package à la fin de la liste)
             sed -i "s/\"packages\": \[\([^]]*\)\]/\"packages\": [\1, \"$package\"]/" "$infofile"
         fi
     fi
@@ -129,8 +123,7 @@ case "$1" in
     if sudo arch-nspawn -c /var/cache/pacman/pkg "${ARCHSHELL_DIR}/${ENVNAME}" pacman -S --noconfirm "$@" > /dev/null 2>&1; then
       echo "Installation terminée."
       update_last_used "$ENVNAME"
-      # Ajouter chaque package à la liste
-      for pkg in "$@"; do
+            for pkg in "$@"; do
         add_package "$ENVNAME" "$pkg"
       done
     else
