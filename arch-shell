@@ -13,6 +13,27 @@ ARCHSHELL_DIR="${HOME}/.arch-shell"
 ARCHSHELL_STORE="${ARCHSHELL_DIR}/store"
 BASE_TEMPLATE="${ARCHSHELL_STORE}/base-template"
 
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+spinner() {
+  local pid=$1
+  local msg="$2"
+  local spinstr='|/-\\'
+  local i=0
+  tput civis
+  while kill -0 $pid 2>/dev/null; do
+    i=$(( (i+1) %4 ))
+    printf "\r${YELLOW}[*] %s %s${NC}" "${spinstr:$i:1}" "$msg"
+    sleep 0.1
+  done
+  printf "\r${GREEN}[*] %s terminé !${NC}\n" "$msg"
+  tput cnorm
+}
+
 usage() {
     echo "Usage: $0 init | regen-base | create <env> | -S <env> <pkg...> | enter <env> | delete <env> | list | info <env>"
     exit 1
@@ -70,25 +91,25 @@ case "$1" in
     if [ -d "$BASE_TEMPLATE" ]; then
       echo "Template de base existe déjà. Utilisez 'regen-base' pour le régénérer."
     else
-      echo "Initialisation du template de base..."
-      if sudo mkarchroot "$BASE_TEMPLATE" base > /dev/null 2>&1; then
-        echo "Template de base créé."
-      else
-        echo "Erreur lors de la création du template de base."; exit 2;
-      fi
+      echo -e "${BLUE}[*] Création du template de base...${NC}"
+      (
+        sudo mkarchroot "$BASE_TEMPLATE" base > /dev/null 2>&1
+      ) &
+      spinner $! "Création du template de base"
+      echo -e "${GREEN}[*] Template de base créé.${NC}"
     fi
     ;;
   regen-base)
     mkdir -p "$ARCHSHELL_STORE"
-    echo "Régénération du template de base..."
+    echo -e "${BLUE}[*] Régénération du template de base...${NC}"
     if [ -d "$BASE_TEMPLATE" ]; then
       sudo rm -rf "$BASE_TEMPLATE"
     fi
-    if sudo mkarchroot "$BASE_TEMPLATE" base > /dev/null 2>&1; then
-      echo "Template de base régénéré."
-    else
-      echo "Erreur lors de la régénération du template de base."; exit 6;
-    fi
+    (
+      sudo mkarchroot "$BASE_TEMPLATE" base > /dev/null 2>&1
+    ) &
+    spinner $! "Régénération du template de base"
+    echo -e "${GREEN}[*] Template de base régénéré.${NC}"
     ;;
   create)
     if [ $# -lt 2 ]; then
@@ -103,11 +124,18 @@ case "$1" in
     if [ -d "${ARCHSHELL_DIR}/${ENVNAME}" ]; then
       echo "L'environnement ${ENVNAME} existe déjà."; exit 5;
     fi
-    echo "Création de l'environnement $ENVNAME à partir du template..."
-    sudo cp -a "$BASE_TEMPLATE" "${ARCHSHELL_DIR}/${ENVNAME}"
+    echo -e "${BLUE}[*] Création de l'environnement $ENVNAME à partir du template...${NC}"
+    mkdir -p "${ARCHSHELL_DIR}/${ENVNAME}"
+    total=$(sudo du -sb "$BASE_TEMPLATE" | awk '{print $1}')
+    (
+      n=0
+      sudo tar cf - -C "$BASE_TEMPLATE" . | \
+      sudo tar xf - -C "${ARCHSHELL_DIR}/${ENVNAME}"
+    ) 2> >(grep -v 'socket ignorée' >&2) &
+    spinner $! "Copie du template"
     sudo chown -R $USER: "${ARCHSHELL_DIR}/${ENVNAME}"
     update_env_info "$ENVNAME"
-    echo "Environnement $ENVNAME créé."
+    echo -e "${GREEN}[*] Environnement $ENVNAME créé.${NC}"
     ;;
   -S)
     if [ $# -lt 3 ]; then
@@ -119,16 +147,16 @@ case "$1" in
     if [ ! -d "${ARCHSHELL_DIR}/${ENVNAME}" ]; then
       echo "Environnement inexistant : ${ENVNAME}"; exit 3;
     fi
-    echo "Installation de(s) paquet(s) $* dans $ENVNAME..."
-    if sudo arch-nspawn -c /var/cache/pacman/pkg "${ARCHSHELL_DIR}/${ENVNAME}" pacman -S --noconfirm "$@" > /dev/null 2>&1; then
-      echo "Installation terminée."
-      update_last_used "$ENVNAME"
-      for pkg in "$@"; do
-        add_package "$ENVNAME" "$pkg"
-      done
-    else
-      echo "Erreur lors de l'installation des paquets."; exit 4;
-    fi
+    echo -e "${BLUE}[*] Installation de(s) paquet(s) $* dans $ENVNAME...${NC}"
+    (
+      sudo arch-nspawn -c /var/cache/pacman/pkg "${ARCHSHELL_DIR}/${ENVNAME}" pacman -S --noconfirm "$@" > /dev/null 2>&1
+    ) &
+    spinner $! "Installation des paquets"
+    echo -e "${GREEN}[*] Installation terminée.${NC}"
+    update_last_used "$ENVNAME"
+    for pkg in "$@"; do
+      add_package "$ENVNAME" "$pkg"
+    done
     ;;
   enter)
     if [ $# -lt 2 ]; then
